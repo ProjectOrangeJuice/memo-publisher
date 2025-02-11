@@ -108,7 +108,7 @@ func doGit(fileID string) {
 			return
 		}
 	}
-
+	log.Printf("Moving file")
 	// move file into folder
 	cmd := exec.Command("mv", fmt.Sprintf("%s.md", fileID), "project-orange/content/posts/")
 	err := cmd.Run()
@@ -116,6 +116,7 @@ func doGit(fileID string) {
 		log.Printf("Failed to move file, error: %v", err)
 		return
 	}
+	log.Printf("Adding file")
 	// Add the file
 	cmd = exec.Command("git", "add", ".")
 	err = cmd.Run()
@@ -123,6 +124,7 @@ func doGit(fileID string) {
 		log.Printf("Failed to add file, error: %v", err)
 		return
 	}
+	log.Printf("commiting")
 
 	// Commit the file
 	cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Added file %s", fileID))
@@ -131,7 +133,7 @@ func doGit(fileID string) {
 		log.Printf("Failed to commit file, error: %v", err)
 		return
 	}
-
+	log.Printf("pushing")
 	// Push the file
 	cmd = exec.Command("git", "push")
 	err = cmd.Run()
@@ -139,7 +141,7 @@ func doGit(fileID string) {
 		log.Printf("Failed to push file, error: %v", err)
 		return
 	}
-
+	log.Printf("Finished")
 }
 
 func getFirstHashLineAndRemove(text string) (string, string) {
