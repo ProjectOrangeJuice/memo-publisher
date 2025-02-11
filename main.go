@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 )
@@ -50,10 +51,11 @@ func webhookHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.Printf("Body data: %v", body)
+	log.Printf("Body data: %s", body)
 	log.Printf("Json data: %+v", data)
+	log.Printf("Visibility: %s", data.Memo.Visibility)
 
-	if data.Memo.Visibility == "PUBLIC" {
+	if data.Memo.Visibility != "PUBLIC" {
 		log.Printf("Not public, skipping")
 		return
 	}
@@ -91,6 +93,53 @@ title = "%s"
 		log.Printf("Failed to write file, error: %v", err)
 		return
 	}
+
+	doGit(data.Memo.UID)
+}
+
+func doGit(fileID string) {
+	// check if the folder "project-orange" exists
+	if _, err := os.Stat("project-orange"); os.IsNotExist(err) {
+		// Clone the repo
+		cmd := exec.Command("git", "clone", "-c http.sslVerify=false", "https://oharris:4711944ee7f4b531c6585ae8c986300d65f8ca3c@gitea.localdomain/oharris/project-orange.git")
+		err := cmd.Run()
+		if err != nil {
+			log.Printf("Failed to clone repo, error: %v", err)
+			return
+		}
+	}
+
+	// move file into folder
+	cmd := exec.Command("mv", fmt.Sprintf("%s.md", fileID), "project-orange/content/posts/")
+	err := cmd.Run()
+	if err != nil {
+		log.Printf("Failed to move file, error: %v", err)
+		return
+	}
+	// Add the file
+	cmd = exec.Command("git", "add", ".")
+	err = cmd.Run()
+	if err != nil {
+		log.Printf("Failed to add file, error: %v", err)
+		return
+	}
+
+	// Commit the file
+	cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Added file %s", fileID))
+	err = cmd.Run()
+	if err != nil {
+		log.Printf("Failed to commit file, error: %v", err)
+		return
+	}
+
+	// Push the file
+	cmd = exec.Command("git", "push")
+	err = cmd.Run()
+	if err != nil {
+		log.Printf("Failed to push file, error: %v", err)
+		return
+	}
+
 }
 
 func getFirstHashLineAndRemove(text string) (string, string) {
