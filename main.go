@@ -100,8 +100,10 @@ title = "%s"
 func doGit(fileID string) {
 	// check if the folder "project-orange" exists
 	if _, err := os.Stat("project-orange"); os.IsNotExist(err) {
+		// Get creds from env
+		gitstuff := os.Getenv("GITSTUFF")
 		// Clone the repo
-		cmd := exec.Command("git", "clone", "-c http.sslVerify=false", "https://oharris:4711944ee7f4b531c6585ae8c986300d65f8ca3c@gitea.localdomain/oharris/project-orange.git")
+		cmd := exec.Command("git", "clone", "-c http.sslVerify=false", fmt.Sprintf("https://%s@gitea.localdomain/oharris/project-orange.git", gitstuff))
 		err := cmd.Run()
 		if err != nil {
 			log.Printf("Failed to clone repo, error: %v", err)
@@ -119,6 +121,7 @@ func doGit(fileID string) {
 	log.Printf("Adding file")
 	// Add the file
 	cmd = exec.Command("git", "add", ".")
+	cmd.Dir = "project-orange"
 	err = cmd.Run()
 	if err != nil {
 		log.Printf("Failed to add file, error: %v", err)
@@ -128,6 +131,7 @@ func doGit(fileID string) {
 
 	// Commit the file
 	cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Added file %s", fileID))
+	cmd.Dir = "project-orange"
 	err = cmd.Run()
 	if err != nil {
 		log.Printf("Failed to commit file, error: %v", err)
@@ -136,6 +140,7 @@ func doGit(fileID string) {
 	log.Printf("pushing")
 	// Push the file
 	cmd = exec.Command("git", "push")
+	cmd.Dir = "project-orange"
 	err = cmd.Run()
 	if err != nil {
 		log.Printf("Failed to push file, error: %v", err)
