@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,21 +15,22 @@ import (
 )
 
 func main() {
-
 	http.HandleFunc("/webhook", webhookHandler)
 	log.Fatal(http.ListenAndServe(":8080", nil))
 
 }
 
+type resource struct {
+	Name     string `json:"name"`
+	Filename string `json:"filename"`
+}
+
 type webhookData struct {
 	Activity string `json:"activityType"`
 	Memo     struct {
-		UID       string `json:"uid"`
-		Content   string `json:"content"`
-		Resources []struct {
-			Name     string `json:"name"`
-			Filename string `json:"filename"`
-		}
+		UID        string `json:"uid"`
+		Content    string `json:"content"`
+		Resources  []resource
 		Visibility string `json:"visibility"`
 	} `json:"memo"`
 }
@@ -55,10 +57,21 @@ func webhookHandler(w http.ResponseWriter, req *http.Request) {
 	log.Printf("Json data: %+v", data)
 	log.Printf("Visibility: %s", data.Memo.Visibility)
 
+	err = prepGit()
+	if err != nil {
+		log.Printf("Failed to setup git, error: %v", err)
+		return
+	}
+
 	if data.Memo.Visibility != "PUBLIC" {
 		log.Printf("Not public, skipping")
 		// if the file has changed to private
 		deleteFile(data.Memo.UID)
+		err = pushGit()
+		if err != nil {
+			log.Printf("Failed to push git, error: %v", err)
+			return
+		}
 		return
 	}
 
@@ -82,29 +95,27 @@ title = "%s"
 +++
 	%s`, time.Now().Format("2006-01-02"), heading, text)
 
-	log.Printf("Template: %s", template)
-
-	// Write the template to a file
-	err = os.WriteFile(fmt.Sprintf("%s.md", data.Memo.UID), []byte(template), 0644)
-	if err != nil {
-		log.Printf("Failed to write file, error: %v", err)
-		return
+	// Add the resources
+	for _, res := range data.Memo.Resources {
+		template = fmt.Sprintf("%s\n\n![%s](%s)", template, res.Filename, getLastDigits(res.Name)+res.Filename)
 	}
 
-	addFile(data.Memo.UID)
+	log.Printf("Template: %s", template)
+
+	addFile(template, data.Memo.UID)
+	updateResources(data.Memo.Resources, data.Memo.UID)
+	err = pushGit()
+	if err != nil {
+		log.Printf("Failed to push git, error: %v", err)
+		return
+	}
 }
 
 func deleteFile(fileID string) {
-	err := prepGit()
-	if err != nil {
-		log.Printf("Failed to setup git, error: %v", err)
-		return
-	}
-
 	log.Printf("Deleting file")
 	// Delete the file
-	cmd := exec.Command("rm", fmt.Sprintf("project-orange/content/posts/%s.md", fileID))
-	err = cmd.Run()
+	cmd := exec.Command("rm", "-r", fmt.Sprintf("project-orange/content/post/%s", fileID))
+	err := cmd.Run()
 	if err != nil {
 		log.Printf("Failed to delete file, error: %v", err)
 		return
@@ -118,28 +129,17 @@ func deleteFile(fileID string) {
 
 }
 
-func addFile(fileID string) {
-	err := prepGit()
+func addFile(text string, fileID string) {
+	// Create the folder if needed
+	cmd := exec.Command("mkdir", "-p", fmt.Sprintf("project-orange/content/post/%s", fileID))
+	_ = cmd.Run()
+
+	// Write the template to a file
+	err := os.WriteFile(fmt.Sprintf("project-orange/content/post/%s/index.md", fileID), []byte(text), 0644)
 	if err != nil {
-		log.Printf("Failed to setup git, error: %v", err)
+		log.Printf("Failed to write file, error: %v", err)
 		return
 	}
-
-	log.Printf("Moving file")
-	// move file into folder
-	cmd := exec.Command("mv", fmt.Sprintf("%s.md", fileID), "project-orange/content/posts/")
-	err = cmd.Run()
-	if err != nil {
-		log.Printf("Failed to move file, error: %v", err)
-		return
-	}
-
-	err = pushGit()
-	if err != nil {
-		log.Printf("Failed to push git, error: %v", err)
-		return
-	}
-
 }
 
 func pushGit() error {
@@ -215,4 +215,48 @@ func getFirstHashLineAndRemove(text string) (string, string) {
 	}
 	remainingText = strings.Join(lines, "\n")
 	return firstHashLine, remainingText
+}
+
+var (
+	tr = &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client = &http.Client{Transport: tr}
+)
+
+func updateResources(resources []resource, fileID string) {
+	// Download the resource
+	for _, res := range resources {
+		log.Printf("Downloading resource: %s", res.Name)
+		resp, err := client.Get(fmt.Sprintf("https://memo.projectkube.com/file/%s/%s", res.Name, res.Filename))
+		if err != nil {
+			log.Printf("Failed to download resource, error: %v", err)
+			return
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Printf("Failed to read body, error: %v", err)
+			return
+		}
+
+		// Write the resource to a file
+		err = os.WriteFile(fmt.Sprintf("project-orange/content/post/%s/%s", fileID, getLastDigits(res.Name)+res.Filename), body, 0644)
+		if err != nil {
+			log.Printf("Failed to write resource, error: %v", err)
+			return
+		}
+	}
+}
+
+func getLastDigits(text string) string {
+	var lastDigits string
+	for _, r := range text {
+		if r >= '0' && r <= '9' {
+			lastDigits = fmt.Sprintf("%s%c", lastDigits, r)
+		} else {
+			lastDigits = ""
+		}
+	}
+	return lastDigits
 }
