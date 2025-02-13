@@ -57,6 +57,8 @@ func webhookHandler(w http.ResponseWriter, req *http.Request) {
 
 	if data.Memo.Visibility != "PUBLIC" {
 		log.Printf("Not public, skipping")
+		// if the file has changed to private
+		deleteFile(data.Memo.UID)
 		return
 	}
 
