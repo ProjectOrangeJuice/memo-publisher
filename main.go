@@ -61,12 +61,7 @@ func webhookHandler(w http.ResponseWriter, req *http.Request) {
 	}
 
 	if data.Activity == "memos.memo.deleted" {
-		// Delete the file
-		err = os.Remove(fmt.Sprintf("%s.md", data.Memo.UID))
-		if err != nil {
-			log.Printf("Failed to delete file, error: %v", err)
-			return
-		}
+		deleteFile(data.Memo.UID)
 		return
 	}
 
@@ -94,10 +89,88 @@ title = "%s"
 		return
 	}
 
-	doGit(data.Memo.UID)
+	addFile(data.Memo.UID)
 }
 
-func doGit(fileID string) {
+func deleteFile(fileID string) {
+	err := prepGit()
+	if err != nil {
+		log.Printf("Failed to setup git, error: %v", err)
+		return
+	}
+
+	log.Printf("Deleting file")
+	// Delete the file
+	cmd := exec.Command("rm", fmt.Sprintf("project-orange/content/posts/%s.md", fileID))
+	err = cmd.Run()
+	if err != nil {
+		log.Printf("Failed to delete file, error: %v", err)
+		return
+	}
+
+	err = pushGit()
+	if err != nil {
+		log.Printf("Failed to push git, error: %v", err)
+		return
+	}
+
+}
+
+func addFile(fileID string) {
+	err := prepGit()
+	if err != nil {
+		log.Printf("Failed to setup git, error: %v", err)
+		return
+	}
+
+	log.Printf("Moving file")
+	// move file into folder
+	cmd := exec.Command("mv", fmt.Sprintf("%s.md", fileID), "project-orange/content/posts/")
+	err = cmd.Run()
+	if err != nil {
+		log.Printf("Failed to move file, error: %v", err)
+		return
+	}
+
+	err = pushGit()
+	if err != nil {
+		log.Printf("Failed to push git, error: %v", err)
+		return
+	}
+
+}
+
+func pushGit() error {
+	log.Printf("Adding file")
+	// Add the file
+	cmd := exec.Command("git", "add", ".")
+	cmd.Dir = "project-orange"
+	err := cmd.Run()
+	if err != nil {
+		return fmt.Errorf("Failed to add file, error: %v", err)
+	}
+	log.Printf("commiting")
+
+	// Commit the file
+	cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Updated via webhook"))
+	cmd.Dir = "project-orange"
+	err = cmd.Run()
+	if err != nil {
+		return fmt.Errorf("Failed to commit file, error: %v", err)
+	}
+	log.Printf("pushing")
+	// Push the file
+	cmd = exec.Command("git", "push")
+	cmd.Dir = "project-orange"
+	err = cmd.Run()
+	if err != nil {
+		return fmt.Errorf("Failed to push file, error: %v", err)
+	}
+	log.Printf("Finished")
+	return nil
+}
+
+func prepGit() error {
 	// check if the folder "project-orange" exists
 	if _, err := os.Stat("project-orange"); os.IsNotExist(err) {
 		// Get creds from env
@@ -106,47 +179,18 @@ func doGit(fileID string) {
 		cmd := exec.Command("git", "clone", "-c http.sslVerify=false", fmt.Sprintf("https://%s@gitea.localdomain/oharris/project-orange.git", gitstuff))
 		err := cmd.Run()
 		if err != nil {
-			log.Printf("Failed to clone repo, error: %v", err)
-			return
+			return fmt.Errorf("Failed to clone repo, error: %v", err)
+		}
+	} else {
+		// Pull the repo
+		cmd := exec.Command("git", "pull")
+		cmd.Dir = "project-orange"
+		err := cmd.Run()
+		if err != nil {
+			return fmt.Errorf("Failed to pull repo, error: %v", err)
 		}
 	}
-	log.Printf("Moving file")
-	// move file into folder
-	cmd := exec.Command("mv", fmt.Sprintf("%s.md", fileID), "project-orange/content/posts/")
-	err := cmd.Run()
-	if err != nil {
-		log.Printf("Failed to move file, error: %v", err)
-		return
-	}
-	log.Printf("Adding file")
-	// Add the file
-	cmd = exec.Command("git", "add", ".")
-	cmd.Dir = "project-orange"
-	err = cmd.Run()
-	if err != nil {
-		log.Printf("Failed to add file, error: %v", err)
-		return
-	}
-	log.Printf("commiting")
-
-	// Commit the file
-	cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Added file %s", fileID))
-	cmd.Dir = "project-orange"
-	err = cmd.Run()
-	if err != nil {
-		log.Printf("Failed to commit file, error: %v", err)
-		return
-	}
-	log.Printf("pushing")
-	// Push the file
-	cmd = exec.Command("git", "push")
-	cmd.Dir = "project-orange"
-	err = cmd.Run()
-	if err != nil {
-		log.Printf("Failed to push file, error: %v", err)
-		return
-	}
-	log.Printf("Finished")
+	return nil
 }
 
 func getFirstHashLineAndRemove(text string) (string, string) {
