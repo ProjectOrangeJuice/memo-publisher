@@ -86,7 +86,7 @@ func webhookHandler(w http.ResponseWriter, req *http.Request) {
 	// Delete the memo to keep the resources correct (we lazily download every time)
 	deleteFile(data.Memo.UID)
 
-	if data.Memo.Visibility == "PUBLIC" {
+	if data.Memo.Visibility == "PUBLIC" && data.Activity != "memos.memo.deleted" {
 		log.Printf("Updating or creating post")
 		handleUpdate(data)
 	}
