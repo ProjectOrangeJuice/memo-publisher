@@ -111,7 +111,7 @@ func handleUpdate(data webhookData) error {
 date = '%s'
 draft = false
 title = "%s"
-description = "%s"
+summary = "%s"
 +++
 %s`, time.Now().Format("2006-01-02"), heading, desc, text)
 
