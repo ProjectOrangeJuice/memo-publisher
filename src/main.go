@@ -104,7 +104,6 @@ func handleUpdate(data webhookData) error {
 	// Find the first # element
 	heading, text := getFirstHashLineAndRemove(data.Memo.Content)
 	log.Printf("Heading: %s", heading)
-	desc, text := getFirstParagraph(text)
 	// Generate the template
 	template := fmt.Sprintf(`
 +++
@@ -113,7 +112,7 @@ draft = false
 title = "%s"
 summary = "%s"
 +++
-%s`, time.Now().Format("2006-01-02"), heading, desc, text)
+%s`, time.Now().Format("2006-01-02"), heading, getFirstParagraph(text), text)
 
 	// Add the resources
 	for _, res := range data.Memo.Resources {
@@ -173,15 +172,15 @@ func getFirstHashLineAndRemove(text string) (string, string) {
 	return firstHashLine, remainingText
 }
 
-func getFirstParagraph(text string) (string, string) {
+func getFirstParagraph(text string) string {
 	splits := strings.Split(text, "\n")
-	for index, split := range splits {
+	for _, split := range splits {
 		// first line that contains text
 		if len(strings.TrimSpace(split)) > 0 {
-			return split, strings.Join(splits[index+1:], "\n")
+			return split
 		}
 	}
-	return "", text
+	return ""
 }
 
 var (
