@@ -41,7 +41,7 @@ spec:
         image: projectorangejuice/projectsync:latest
         env:
         - name: MEMO_URL
-            value: "" # Used to fetch resources
+          value: "" # Used to fetch resources
         - name: GIT_URL
           valueFrom:
             secretKeyRef:
