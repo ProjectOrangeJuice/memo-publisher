@@ -14,15 +14,33 @@ import (
 	"time"
 )
 
+var (
+	GitURL  string
+	MemoURL string
+)
+
 func main() {
+	// fetch the environment variables
+	GitURL = fetchEnv("GIT_URL")
+	MemoURL = fetchEnv("MEMO_URL")
+
+	log.Printf("Prepping git repo")
+	err := prepGit()
+	if err != nil {
+		log.Fatalf("Could not setup git repo, %s", err)
+	}
+
+	log.Printf("Starting on port 8080")
 	http.HandleFunc("/webhook", webhookHandler)
 	log.Fatal(http.ListenAndServe(":8080", nil))
-
 }
 
-type resource struct {
-	Name     string `json:"name"`
-	Filename string `json:"filename"`
+// fetchEnv fetches the environment variable and will exit if it is not set
+func fetchEnv(env string) string {
+	if os.Getenv(env) == "" {
+		log.Fatalf("Missing environment variable: %s", env)
+	}
+	return os.Getenv(env)
 }
 
 type webhookData struct {
@@ -35,8 +53,13 @@ type webhookData struct {
 	} `json:"memo"`
 }
 
+type resource struct {
+	Name     string `json:"name"`
+	Filename string `json:"filename"`
+}
+
 func webhookHandler(w http.ResponseWriter, req *http.Request) {
-	log.Printf("Web hook")
+	log.Print("Webhook called")
 
 	// Read the body data
 	body, err := io.ReadAll(req.Body)
@@ -53,33 +76,29 @@ func webhookHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	log.Printf("Body data: %s", body)
-	log.Printf("Json data: %+v", data)
-	log.Printf("Visibility: %s", data.Memo.Visibility)
-
+	// Prep the git repo before working on it
 	err = prepGit()
 	if err != nil {
 		log.Printf("Failed to setup git, error: %v", err)
 		return
 	}
 
-	if data.Memo.Visibility != "PUBLIC" {
-		log.Printf("Not public, skipping")
-		// if the file has changed to private
-		deleteFile(data.Memo.UID)
-		err = pushGit()
-		if err != nil {
-			log.Printf("Failed to push git, error: %v", err)
-			return
-		}
-		return
+	// Delete the memo to keep the resources correct (we lazily download every time)
+	deleteFile(data.Memo.UID)
+
+	if data.Memo.Visibility == "PUBLIC" {
+		log.Printf("Updating or creating post")
+		handleUpdate(data)
 	}
 
-	if data.Activity == "memos.memo.deleted" {
-		deleteFile(data.Memo.UID)
+	err = pushGit()
+	if err != nil {
+		log.Printf("Failed to push git, error: %v", err)
 		return
 	}
+}
 
+func handleUpdate(data webhookData) error {
 	// Now we generate the template
 
 	// Find the first # element
@@ -97,102 +116,38 @@ title = "%s"
 
 	// Add the resources
 	for _, res := range data.Memo.Resources {
-		template = fmt.Sprintf("%s\n\n![%s](%s)", template, res.Filename, getLastDigits(res.Name)+res.Filename)
+		template = fmt.Sprintf("%s\n\n![%s](%s)", template, res.Filename, getResourceNumber(res.Name)+res.Filename)
 	}
 
 	log.Printf("Template: %s", template)
 
 	addFile(template, data.Memo.UID)
 	updateResources(data.Memo.Resources, data.Memo.UID)
-	err = pushGit()
-	if err != nil {
-		log.Printf("Failed to push git, error: %v", err)
-		return
-	}
+	return nil
 }
 
 func deleteFile(fileID string) {
 	log.Printf("Deleting file")
 	// Delete the file
-	cmd := exec.Command("rm", "-r", fmt.Sprintf("project-orange/content/post/%s", fileID))
-	err := cmd.Run()
+	cmd := exec.Command("rm", "-r", fmt.Sprintf("%s/content/post/%s", repoNameFromGit(), fileID))
+	err, output := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("Failed to delete file, error: %v", err)
+		log.Printf("Failed to delete file, error: %v, output %s", err, output)
 		return
 	}
-
-	err = pushGit()
-	if err != nil {
-		log.Printf("Failed to push git, error: %v", err)
-		return
-	}
-
 }
 
 func addFile(text string, fileID string) {
 	// Create the folder if needed
-	cmd := exec.Command("mkdir", "-p", fmt.Sprintf("project-orange/content/post/%s", fileID))
-	_ = cmd.Run()
+	cmd := exec.Command("mkdir", "-p", fmt.Sprintf("%s/content/post/%s", repoNameFromGit(), fileID))
+	_ = cmd.Run() // We don't care for this error
 
 	// Write the template to a file
-	err := os.WriteFile(fmt.Sprintf("project-orange/content/post/%s/index.md", fileID), []byte(text), 0644)
+	err := os.WriteFile(fmt.Sprintf("%s/content/post/%s/index.md", repoNameFromGit(), fileID), []byte(text), 0644)
 	if err != nil {
 		log.Printf("Failed to write file, error: %v", err)
 		return
 	}
-}
-
-func pushGit() error {
-	log.Printf("Adding file")
-	// Add the file
-	cmd := exec.Command("git", "add", ".")
-	cmd.Dir = "project-orange"
-	err := cmd.Run()
-	if err != nil {
-		return fmt.Errorf("Failed to add file, error: %v", err)
-	}
-	log.Printf("commiting")
-
-	// Commit the file
-	cmd = exec.Command("git", "commit", "-m", fmt.Sprintf("Updated via webhook"))
-	cmd.Dir = "project-orange"
-	err = cmd.Run()
-	if err != nil {
-		return fmt.Errorf("Failed to commit file, error: %v", err)
-	}
-	log.Printf("pushing")
-	// Push the file
-	cmd = exec.Command("git", "push")
-	cmd.Dir = "project-orange"
-	err = cmd.Run()
-	if err != nil {
-		return fmt.Errorf("Failed to push file, error: %v", err)
-	}
-	log.Printf("Finished")
-	return nil
-}
-
-func prepGit() error {
-	// check if the folder "project-orange" exists
-	if _, err := os.Stat("project-orange"); os.IsNotExist(err) {
-		// Get creds from env
-		gitstuff := os.Getenv("GITSTUFF")
-		// Clone the repo
-		cmd := exec.Command("git", "clone", "-c http.sslVerify=false", fmt.Sprintf("https://%s@gitea.localdomain/oharris/project-orange.git", gitstuff))
-		err := cmd.Run()
-		if err != nil {
-			return fmt.Errorf("Failed to clone repo, error: %v", err)
-		}
-	} else {
-		// Pull the repo
-		cmd := exec.Command("git", "pull")
-		cmd.Dir = "project-orange"
-		err := cmd.Run()
-		if err != nil {
-			return fmt.Errorf("Failed to pull repo, error: %v", err)
-		}
-	}
-	return nil
 }
 
 func getFirstHashLineAndRemove(text string) (string, string) {
@@ -228,7 +183,7 @@ func updateResources(resources []resource, fileID string) {
 	// Download the resource
 	for _, res := range resources {
 		log.Printf("Downloading resource: %s", res.Name)
-		resp, err := client.Get(fmt.Sprintf("https://memo.projectkube.com/file/%s/%s", res.Name, res.Filename))
+		resp, err := client.Get(fmt.Sprintf("%s/file/%s/%s", MemoURL, res.Name, res.Filename))
 		if err != nil {
 			log.Printf("Failed to download resource, error: %v", err)
 			return
@@ -241,7 +196,7 @@ func updateResources(resources []resource, fileID string) {
 		}
 
 		// Write the resource to a file
-		err = os.WriteFile(fmt.Sprintf("project-orange/content/post/%s/%s", fileID, getLastDigits(res.Name)+res.Filename), body, 0644)
+		err = os.WriteFile(fmt.Sprintf("%s/content/post/%s/%s", repoNameFromGit(), fileID, getResourceNumber(res.Name)+res.Filename), body, 0644)
 		if err != nil {
 			log.Printf("Failed to write resource, error: %v", err)
 			return
@@ -249,9 +204,9 @@ func updateResources(resources []resource, fileID string) {
 	}
 }
 
-func getLastDigits(text string) string {
+func getResourceNumber(resourceName string) string {
 	var lastDigits string
-	for _, r := range text {
+	for _, r := range resourceName {
 		if r >= '0' && r <= '9' {
 			lastDigits = fmt.Sprintf("%s%c", lastDigits, r)
 		} else {
