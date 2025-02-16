@@ -111,8 +111,9 @@ func handleUpdate(data webhookData) error {
 date = '%s'
 draft = false
 title = "%s"
+description = "%s"
 +++
-	%s`, time.Now().Format("2006-01-02"), heading, text)
+%s`, time.Now().Format("2006-01-02"), heading, getFirstParagraph(text), text)
 
 	// Add the resources
 	for _, res := range data.Memo.Resources {
@@ -170,6 +171,17 @@ func getFirstHashLineAndRemove(text string) (string, string) {
 	}
 	remainingText = strings.Join(lines, "\n")
 	return firstHashLine, remainingText
+}
+
+func getFirstParagraph(text string) string {
+	splits := strings.Split(text, "\n")
+	for _, split := range splits {
+		// first line that contains text
+		if len(strings.TrimSpace(split)) > 0 {
+			return split
+		}
+	}
+	return ""
 }
 
 var (
