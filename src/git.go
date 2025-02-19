@@ -8,7 +8,7 @@ import (
 	"regexp"
 )
 
-var gitRepoRegx = regexp.MustCompile(`([^\/]+).git$`)
+var gitRepoRegx = regexp.MustCompile("([^/]+).git$")
 var repoName string
 
 func repoNameFromGit() string {
