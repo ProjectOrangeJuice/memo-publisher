@@ -8,8 +8,8 @@ import (
 	"regexp"
 )
 
-var gitRepoRegx = regexp.MustCompile("([^/]+).git$")
-var repoName string
+var gitRepoRegx = regexp.MustCompile(`([^/]+)\.git\s*$`)
+var repoName = ""
 
 func repoNameFromGit() string {
 	if repoName != "" {
@@ -20,8 +20,8 @@ func repoNameFromGit() string {
 	if len(matches) < 2 {
 		log.Fatalf("Could not read the repo name from the url, %s", GitURL)
 	}
-	log.Printf("Repo name set to %s", repoName)
 	repoName = matches[1]
+	log.Printf("Repo name set to %s", repoName)
 	return matches[1]
 }
 
