@@ -21,8 +21,8 @@ var (
 
 func main() {
 	// fetch the environment variables
-	GitURL = fetchEnv("GIT_URL")
-	MemoURL = fetchEnv("MEMO_URL")
+	GitURL = strings.TrimSpace(fetchEnv("GIT_URL"))
+	MemoURL = strings.TrimSpace(fetchEnv("MEMO_URL"))
 
 	log.Printf("Prepping git repo")
 	err := prepGit()
