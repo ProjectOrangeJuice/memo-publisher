@@ -46,7 +46,8 @@ func fetchEnv(env string) string {
 type webhookData struct {
 	Activity string `json:"activityType"`
 	Memo     struct {
-		UID        string `json:"uid"`
+		MemoID     string
+		Name       string `json:"name"`
 		Content    string `json:"content"`
 		Resources  []resource
 		Visibility string `json:"visibility"`
@@ -67,6 +68,7 @@ func webhookHandler(w http.ResponseWriter, req *http.Request) {
 		log.Printf("Failed to read body, error: %s", err)
 		return
 	}
+	log.Printf("body.. %s", body)
 
 	// Read the json data
 	var data webhookData
@@ -83,8 +85,10 @@ func webhookHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	data.Memo.MemoID = strings.SplitN(data.Memo.Name, "/", 2)[1] // should check this
+
 	// Delete the memo to keep the resources correct (we lazily download every time)
-	deleteFile(data.Memo.UID)
+	deleteFile(data.Memo.MemoID)
 
 	if data.Memo.Visibility == "PUBLIC" && data.Activity != "memos.memo.deleted" {
 		log.Printf("Updating or creating post")
@@ -99,8 +103,7 @@ func webhookHandler(w http.ResponseWriter, req *http.Request) {
 }
 
 func handleUpdate(data webhookData) error {
-	// Now we generate the template
-
+	log.Printf("webhook data [%+v]", data)
 	// Find the first # element
 	heading, text := getFirstHashLineAndRemove(data.Memo.Content)
 	log.Printf("Heading: %s", heading)
@@ -121,8 +124,8 @@ summary = "%s"
 
 	log.Printf("Template: %s", template)
 
-	addFile(template, data.Memo.UID)
-	updateResources(data.Memo.Resources, data.Memo.UID)
+	addFile(template, data.Memo.MemoID)
+	updateResources(data.Memo.Resources, data.Memo.MemoID)
 	return nil
 }
 
@@ -138,6 +141,7 @@ func deleteFile(fileID string) {
 }
 
 func addFile(text string, fileID string) {
+	log.Printf("Adding the file with ID %s", fileID)
 	// Create the folder if needed
 	cmd := exec.Command("mkdir", "-p", fmt.Sprintf("%s/content/post/%s", repoNameFromGit(), fileID))
 	_ = cmd.Run() // We don't care for this error
