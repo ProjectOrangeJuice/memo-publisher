@@ -64,7 +64,7 @@ func webhookHandler(w http.ResponseWriter, req *http.Request) {
 	// Read the body data
 	body, err := io.ReadAll(req.Body)
 	if err != nil {
-		log.Printf("Failed to read body, error: %v", err)
+		log.Printf("Failed to read body, error: %s", err)
 		return
 	}
 
@@ -72,14 +72,14 @@ func webhookHandler(w http.ResponseWriter, req *http.Request) {
 	var data webhookData
 	err = json.Unmarshal(body, &data)
 	if err != nil {
-		log.Printf("Failed to read json body, error: %v body(%s)", err, body)
+		log.Printf("Failed to read json body, error: %s body(%s)", err, body)
 		return
 	}
 
 	// Prep the git repo before working on it
 	err = prepGit()
 	if err != nil {
-		log.Printf("Failed to setup git, error: %v", err)
+		log.Printf("Failed to setup git, error: %s", err)
 		return
 	}
 
@@ -93,7 +93,7 @@ func webhookHandler(w http.ResponseWriter, req *http.Request) {
 
 	err = pushGit()
 	if err != nil {
-		log.Printf("Failed to push git, error: %v", err)
+		log.Printf("Failed to push git, error: %s", err)
 		return
 	}
 }
@@ -132,7 +132,7 @@ func deleteFile(fileID string) {
 	cmd := exec.Command("rm", "-r", fmt.Sprintf("%s/content/post/%s", repoNameFromGit(), fileID))
 	err, output := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("Failed to delete file, error: %v, output %s", err, output)
+		log.Printf("Failed to delete file, error: %s, output %s", err, output)
 		return
 	}
 }
@@ -145,7 +145,7 @@ func addFile(text string, fileID string) {
 	// Write the template to a file
 	err := os.WriteFile(fmt.Sprintf("%s/content/post/%s/index.md", repoNameFromGit(), fileID), []byte(text), 0644)
 	if err != nil {
-		log.Printf("Failed to write file, error: %v", err)
+		log.Printf("Failed to write file, error: %s", err)
 		return
 	}
 }
@@ -196,20 +196,20 @@ func updateResources(resources []resource, fileID string) {
 		log.Printf("Downloading resource: %s", res.Name)
 		resp, err := client.Get(fmt.Sprintf("%s/file/%s/%s", MemoURL, res.Name, res.Filename))
 		if err != nil {
-			log.Printf("Failed to download resource, error: %v", err)
+			log.Printf("Failed to download resource, error: %s", err)
 			return
 		}
 		defer resp.Body.Close()
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			log.Printf("Failed to read body, error: %v", err)
+			log.Printf("Failed to read body, error: %s", err)
 			return
 		}
 
 		// Write the resource to a file
 		err = os.WriteFile(fmt.Sprintf("%s/content/post/%s/%s", repoNameFromGit(), fileID, getResourceNumber(res.Name)+res.Filename), body, 0644)
 		if err != nil {
-			log.Printf("Failed to write resource, error: %v", err)
+			log.Printf("Failed to write resource, error: %s", err)
 			return
 		}
 	}

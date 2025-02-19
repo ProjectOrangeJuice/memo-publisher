@@ -20,6 +20,7 @@ func repoNameFromGit() string {
 	if len(matches) < 2 {
 		log.Fatalf("Could not read the repo name from the url, %s", GitURL)
 	}
+	log.Printf("Repo name set to %s", repoName)
 	repoName = matches[1]
 	return matches[1]
 }
